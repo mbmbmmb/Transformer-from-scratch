@@ -1,0 +1,13 @@
+# bpe.yaml — config for cs336_basics/train_bpe.py
+paths:
+  txt_train: data/raw/TinyStoriesV2-GPT4-train.txt
+  txt_valid: data/raw/TinyStoriesV2-GPT4-valid.txt
+  output_dir: data/tokenized/tinystories
+
+bpe:
+  vocab_size: 10000
+  special_tokens: ["<|endoftext|>"]
+  num_processes: 10
+
+encode:
+  chunk_mb: 20

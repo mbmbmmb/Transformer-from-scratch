@@ -1,0 +1,25 @@
+# data (raw corpora and tokenized .bin files; regenerate with train_bpe.py)
+data/
+*.bin
+*.npy
+
+# training outputs: checkpoints (~272 MB each) and run directories
+*.pt
+!tests/fixtures/ts_tests/model.pt
+runs/
+
+# python / tooling
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+*.egg-info/
+build/
+dist/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

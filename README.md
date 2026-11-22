@@ -15,7 +15,7 @@ tokenizer libraries are used. The model is trained on TinyStories on a laptop GP
 - [x] Transformer block and LM: pre-norm block, full decoder-only LM
 - [x] Cross-entropy, AdamW and the LR schedule: numerically stable loss, AdamW, cosine schedule with warmup, gradient clipping
 - [x] Training loop and checkpointing: memmap data loader, config-driven training script, checkpoint save/load
-- [ ] Decoding: temperature sampling works (`generate.py`); top-p sampling and stopping at `<|endoftext|>` are not implemented yet
+- [x] Decoding: temperature sampling from a prompt (`generate.py`)
 
 Everything ticked passes the course unit tests (`uv run pytest`: 46 passed, 2 skipped; the skips are
 Linux-only memory tests). The training loop has no unit test of its own; it was exercised by the
@@ -87,8 +87,6 @@ from `notebooks/train_together.ipynb`, stops at the token limit):
 > Under the tree, Tim found a lot of color to put. He saw a girl named Sue playing with a ball. Tim asked
 > Sue, "Can I play with your ball?" Sue said, "Yes, but be careful. It might
 
-TODO: add more samples (different prompts and temperatures).
-
 ## Notes: what was tricky, what I learned
 
 More detail in [docs/LEARNING_NOTES.md](docs/LEARNING_NOTES.md).
@@ -118,8 +116,22 @@ The final version rotates each (even, odd) pair of features with precomputed `co
 interleaves them back. The tables are registered buffers, so they move with `model.to(device)` without
 being trained.
 
-**RMSNorm, SwiGLU, softmax / cross-entropy.** RMSNorm upcasts to float32 and casts back. Softmax and
-cross-entropy subtract the row max before `exp`. *(Notes to be filled in.)*
+**RMSNorm (`rmsnorm.py`).** Unlike LayerNorm there is no mean subtraction and no bias: each vector is
+divided by its root-mean-square over `d_model` (with `eps` inside the square root) and scaled by a
+learned gain. I upcast to float32 before squaring and cast back afterwards, because squaring and
+averaging in low precision loses accuracy. The ablation shows how much the norm matters: without it,
+training blew up (val loss ~7×10⁵ at the first eval).
+
+**SwiGLU (`swiglu.py`).** The FFN is `W2(SiLU(W1 x) ⊙ W3 x)`: one branch is a SiLU-activated gate that
+scales the other branch element-wise. With three matrices instead of two, `d_ff ≈ 8/3 · d_model`
+(1344 for `d_model` 512, rounded to a multiple of 64) keeps the parameter count close to a classic
+4× FFN. In my 2000-step ablation, plain SiLU was only 0.02 nats worse, too small to call with one seed.
+
+**Softmax and cross-entropy (`softmax.py`, `cross_entropy.py`).** Softmax doesn't change if you subtract
+the same constant from every logit, so I subtract the row max first: the largest exponent becomes
+`exp(0) = 1` and nothing overflows (float32 `exp` overflows above ~88). Cross-entropy never forms
+probabilities. It computes `logsumexp(logits) − logit[target]` with the same max trick, which avoids
+`log(0)` when a probability underflows.
 
 **Transformer LM (`transformer_lm.py`).** Two silent bugs. (1) The blocks were in a plain Python list,
 so they were never registered: `.to()` skipped them and the optimizer never trained them. The fix was
@@ -157,6 +169,7 @@ Full write-up with tables: [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 ## Next
 
 - Post-training: RL fine-tuning with GRPO on GSM8K → [mbmbmmb/GRPO-GSM8K](https://github.com/mbmbmmb/GRPO-GSM8K)
+- Decoding extras: top-p sampling, stopping at `<|endoftext|>`, and a KV cache for faster generation.
 - Planned: CS336 Assignment 2 (systems): profiling, fused kernels, distributed training.
 
 ## How to run
